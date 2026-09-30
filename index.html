@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tinkercad Gear Converter</title>
+
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        background: #f2f2f2;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        margin: 0;
+    }
+
+    .calculator {
+        background: white;
+        padding: 25px;
+        border-radius: 12px;
+        width: 350px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    }
+
+    h1 {
+        text-align: center;
+        font-size: 22px;
+        margin-top: 0;
+    }
+
+    .section {
+        margin-top: 20px;
+        padding-top: 15px;
+        border-top: 1px solid #ddd;
+    }
+
+    label {
+        display: block;
+        margin-bottom: 6px;
+        font-weight: bold;
+    }
+
+    input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 10px;
+        font-size: 16px;
+        border: 1px solid #aaa;
+        border-radius: 6px;
+    }
+
+    button {
+        width: 100%;
+        margin-top: 10px;
+        padding: 10px;
+        font-size: 16px;
+        border: none;
+        border-radius: 6px;
+        background: #333;
+        color: white;
+        cursor: pointer;
+    }
+
+    button:hover {
+        background: #555;
+    }
+
+    .result {
+        margin-top: 12px;
+        padding: 12px;
+        background: #eee;
+        border-radius: 6px;
+        font-size: 18px;
+        text-align: center;
+    }
+
+    .note {
+        font-size: 13px;
+        color: #666;
+        margin-top: 15px;
+        line-height: 1.4;
+    }
+</style>
+</head>
+
+<body>
+
+<div class="calculator">
+
+    <h1>Tinkercad Gear Converter</h1>
+
+    <!-- Teeth → Diameter -->
+    <div class="section">
+        <label for="teeth">Teeth</label>
+        <input type="number" id="teeth" placeholder="Enter number of teeth">
+
+        <button onclick="teethToDiameter()">Convert to Diameter</button>
+
+        <div class="result" id="diameterResult">
+            Diameter: —
+        </div>
+    </div>
+
+    <!-- Diameter → Teeth -->
+    <div class="section">
+        <label for="diameter">Diameter (mm)</label>
+        <input type="number" id="diameter" step="0.01" placeholder="Enter diameter">
+
+        <button onclick="diameterToTeeth()">Convert to Teeth</button>
+
+        <div class="result" id="teethResult">
+            Teeth: —
+        </div>
+    </div>
+
+    <div class="note">
+        Based on measured Tinkercad metric gear block values:
+        <br><br>
+        30 teeth = 31.88 mm<br>
+        35 teeth = 36.94 mm<br>
+        40 teeth = 41.91 mm<br>
+        45 teeth = 46.96 mm<br>
+        50 teeth = 51.93 mm
+    </div>
+
+</div>
+
+<script>
+
+// Your measured Tinkercad values
+const gearData = [
+    { teeth: 30, diameter: 31.88 },
+    { teeth: 35, diameter: 36.94 },
+    { teeth: 40, diameter: 41.91 },
+    { teeth: 45, diameter: 46.96 },
+    { teeth: 50, diameter: 51.93 }
+];
+
+
+// ------------------------------------
+// TEETH → DIAMETER
+// ------------------------------------
+
+function teethToDiameter() {
+
+    let teeth = parseFloat(document.getElementById("teeth").value);
+
+    if (isNaN(teeth)) {
+        document.getElementById("diameterResult").innerText =
+            "Diameter: Enter a value";
+        return;
+    }
+
+    // Clamp to known range
+    if (teeth < 30) teeth = 30;
+    if (teeth > 50) teeth = 50;
+
+    let diameter;
+
+    // Find the two points surrounding the input
+    for (let i = 0; i < gearData.length - 1; i++) {
+
+        let lower = gearData[i];
+        let upper = gearData[i + 1];
+
+        if (teeth >= lower.teeth && teeth <= upper.teeth) {
+
+            // Linear interpolation
+            let ratio =
+                (teeth - lower.teeth) /
+                (upper.teeth - lower.teeth);
+
+            diameter =
+                lower.diameter +
+                ratio * (upper.diameter - lower.diameter);
+
+            break;
+        }
+    }
+
+    // Exact 50 tooth case
+    if (teeth === 50) {
+        diameter = 51.93;
+    }
+
+    document.getElementById("diameterResult").innerText =
+        "Diameter: " + diameter.toFixed(2) + " mm";
+}
+
+
+// ------------------------------------
+// DIAMETER → TEETH
+// ------------------------------------
+
+function diameterToTeeth() {
+
+    let diameter = parseFloat(document.getElementById("diameter").value);
+
+    if (isNaN(diameter)) {
+        document.getElementById("teethResult").innerText =
+            "Teeth: Enter a value";
+        return;
+    }
+
+    // Below minimum
+    if (diameter <= gearData[0].diameter) {
+        document.getElementById("teethResult").innerText =
+            "Teeth: 30";
+        return;
+    }
+
+    // Above maximum
+    if (diameter >= gearData[gearData.length - 1].diameter) {
+        document.getElementById("teethResult").innerText =
+            "Teeth: 50";
+        return;
+    }
+
+    let estimatedTeeth = 30;
+
+    // Find surrounding diameter values
+    for (let i = 0; i < gearData.length - 1; i++) {
+
+        let lower = gearData[i];
+        let upper = gearData[i + 1];
+
+        if (diameter >= lower.diameter &&
+            diameter <= upper.diameter) {
+
+            // Reverse interpolation
+            let ratio =
+                (diameter - lower.diameter) /
+                (upper.diameter - lower.diameter);
+
+            estimatedTeeth =
+                lower.teeth +
+                ratio * (upper.teeth - lower.teeth);
+
+            break;
+        }
+    }
+
+    // ROUND DOWN to whole tooth
+    estimatedTeeth = Math.floor(estimatedTeeth);
+
+    document.getElementById("teethResult").innerText =
+        "Teeth: " + estimatedTeeth;
+}
+
+</script>
+
+</body>
+</html>
