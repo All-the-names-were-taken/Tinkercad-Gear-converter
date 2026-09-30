@@ -29,13 +29,6 @@
             margin-top: 0;
         }
 
-        .setup {
-            background: #e9e9e9;
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-        }
-
         .converter {
             border: 1px solid #ddd;
             border-radius: 10px;
@@ -63,6 +56,12 @@
             margin-bottom: 12px;
         }
 
+        input:disabled {
+            background: #e5e5e5;
+            color: #888;
+            cursor: not-allowed;
+        }
+
         button {
             width: 100%;
             padding: 12px;
@@ -76,6 +75,11 @@
 
         button:hover {
             background: #555;
+        }
+
+        button:disabled {
+            background: #999;
+            cursor: not-allowed;
         }
 
         .result {
@@ -94,19 +98,30 @@
             margin-top: 8px;
         }
 
-        .setup-result {
+        .error {
+            color: red;
+            font-size: 16px;
+            font-weight: bold;
+            text-align: center;
             margin-top: 10px;
-            font-size: 14px;
-            color: #555;
+            min-height: 20px;
+        }
+
+        .multiplier {
+            margin-top: 10px;
+            padding: 10px;
+            background: #eee;
+            border-radius: 6px;
+            text-align: center;
+            font-size: 15px;
+            color: #444;
         }
 
     </style>
-
 </head>
 
 
 <body>
-
 
 <div class="container">
 
@@ -115,26 +130,29 @@
 
     <!-- INITIAL DIAMETER -->
 
-    <div class="setup">
+    <div class="converter">
 
-        <h2>Initial Gear</h2>
+        <h2>Initial Diameter</h2>
 
         <label for="initialDiameter">
-            Diameter of the 18-tooth gear (mm)
+            Diameter at 18 teeth (mm)
         </label>
 
         <input
             type="number"
             id="initialDiameter"
-            value="19.78"
-            min="0.01"
+            min="0"
             step="0.01"
-            placeholder="Example: 19.78"
+            placeholder="Enter initial diameter"
+            oninput="updateInitialDiameter()"
         >
 
         <div class="note">
-            Enter the actual diameter of your 18-tooth gear.
-            The default Tinkercad value is 19.78 mm.
+            Tinkercad's default 18-tooth diameter is 19.78 mm.
+        </div>
+
+        <div class="multiplier" id="multiplierDisplay">
+            Multiplier: Not set
         </div>
 
     </div>
@@ -156,9 +174,14 @@
             min="1"
             step="1"
             placeholder="Enter teeth"
+            disabled
         >
 
-        <button onclick="teethToDiameter()">
+        <button
+            id="teethButton"
+            onclick="teethToDiameter()"
+            disabled
+        >
             Convert
         </button>
 
@@ -166,8 +189,10 @@
             Result will appear here
         </div>
 
+        <div class="error" id="teethError"></div>
+
         <div class="note">
-            Tooth count is always a whole number.
+            The tooth count must be a whole number.
         </div>
 
     </div>
@@ -186,12 +211,17 @@
         <input
             type="number"
             id="diameterInput"
-            min="0.01"
+            min="0"
             step="0.01"
-            placeholder="Enter diameter"
+            placeholder="Enter desired diameter"
+            disabled
         >
 
-        <button onclick="diameterToTeeth()">
+        <button
+            id="diameterButton"
+            onclick="diameterToTeeth()"
+            disabled
+        >
             Convert
         </button>
 
@@ -199,13 +229,14 @@
             Result will appear here
         </div>
 
+        <div class="error" id="diameterError"></div>
+
         <div class="note">
-            The selected gear will always be at or below
-            the requested diameter.
+            The converter always chooses a whole-number gear
+            that is at or below the requested diameter.
         </div>
 
     </div>
-
 
 </div>
 
@@ -213,345 +244,374 @@
 <script>
 
 
-/*
-========================================================
+    /*
+    ============================================================
+    REFERENCE DATA
+    ============================================================
 
-REFERENCE DATA FROM TINKERCAD
+    These are the Tinkercad measurements you supplied.
 
-18 teeth = 19.78 mm
+    The reference 18-tooth diameter is 19.78 mm.
 
-20 teeth = 21.81 mm
-21 teeth = 22.90 mm
-22 teeth = 23.83 mm
-23 teeth = 24.91 mm
-24 teeth = 25.84 mm
-25 teeth = 26.92 mm
-26 teeth = 27.85 mm
-27 teeth = 28.93 mm
-28 teeth = 29.87 mm
-29 teeth = 30.93 mm
-30 teeth = 31.88 mm
-
-========================================================
-*/
+    The values below are for the default/reference scale.
+    */
 
 
-const referenceData = [
-
-    { teeth: 18, diameter: 19.78 },
-
-    { teeth: 20, diameter: 21.81 },
-    { teeth: 21, diameter: 22.90 },
-    { teeth: 22, diameter: 23.83 },
-    { teeth: 23, diameter: 24.91 },
-    { teeth: 24, diameter: 25.84 },
-    { teeth: 25, diameter: 26.92 },
-    { teeth: 26, diameter: 27.85 },
-    { teeth: 27, diameter: 28.93 },
-    { teeth: 28, diameter: 29.87 },
-    { teeth: 29, diameter: 30.93 },
-    { teeth: 30, diameter: 31.88 }
-
-];
+    const reference18Diameter = 19.78;
 
 
-/*
-========================================================
-CREATE THE GEAR GROWTH RULE
-========================================================
+    /*
+        teeth : diameter
+    */
 
-We first determine the average relationship between
-tooth count and diameter from your measured values.
+    const referenceData = [
 
-Then we convert that relationship into a multiplier
-relative to the user's 18-tooth starting diameter.
+        { teeth: 18, diameter: 19.78 },
+        { teeth: 20, diameter: 21.81 },
+        { teeth: 21, diameter: 22.90 },
+        { teeth: 22, diameter: 23.83 },
+        { teeth: 23, diameter: 24.91 },
+        { teeth: 24, diameter: 25.84 },
+        { teeth: 25, diameter: 26.92 },
+        { teeth: 26, diameter: 27.85 },
+        { teeth: 27, diameter: 28.93 },
+        { teeth: 28, diameter: 29.87 },
+        { teeth: 29, diameter: 30.93 },
+        { teeth: 30, diameter: 31.88 }
 
-This means changing the 18-tooth diameter changes
-all predicted gear sizes proportionally.
-*/
+    ];
 
 
-function getMultiplier() {
+    /*
+    ============================================================
+    FITTED RULE
+    ============================================================
 
-    const initialDiameter = parseFloat(
-        document.getElementById("initialDiameter").value
-    );
+    Based on your measurements:
 
-    if (
-        isNaN(initialDiameter) ||
-        initialDiameter <= 0
-    ) {
-        return null;
+    Diameter ≈ 1.0069 × teeth + 1.68
+
+    This allows the calculator to estimate ANY tooth count.
+    */
+
+
+    const slope = 1.0069;
+    const intercept = 1.68;
+
+
+    /*
+    ============================================================
+    MULTIPLIER
+    ============================================================
+    */
+
+    let multiplier = null;
+
+
+    /*
+    ============================================================
+    INITIAL DIAMETER
+    ============================================================
+    */
+
+    function updateInitialDiameter() {
+
+        const input =
+            document.getElementById("initialDiameter");
+
+        const value =
+            parseFloat(input.value);
+
+
+        const multiplierDisplay =
+            document.getElementById("multiplierDisplay");
+
+
+        const teethInput =
+            document.getElementById("teethInput");
+
+        const diameterInput =
+            document.getElementById("diameterInput");
+
+        const teethButton =
+            document.getElementById("teethButton");
+
+        const diameterButton =
+            document.getElementById("diameterButton");
+
+
+        /*
+            No initial diameter entered
+        */
+
+        if (
+            isNaN(value) ||
+            value <= 0
+        ) {
+
+            multiplier = null;
+
+            multiplierDisplay.textContent =
+                "Multiplier: Not set";
+
+            teethInput.disabled = true;
+            diameterInput.disabled = true;
+
+            teethButton.disabled = true;
+            diameterButton.disabled = true;
+
+            return;
+        }
+
+
+        /*
+            Calculate scale multiplier
+
+            Example:
+
+            Initial = 19.78
+
+            19.78 / 19.78 = 1.0000
+        */
+
+        multiplier =
+            value / reference18Diameter;
+
+
+        multiplierDisplay.textContent =
+            "Multiplier: " +
+            multiplier.toFixed(4);
+
+
+        /*
+            Unlock both converters
+        */
+
+        teethInput.disabled = false;
+        diameterInput.disabled = false;
+
+        teethButton.disabled = false;
+        diameterButton.disabled = false;
+
+
+        /*
+            Clear any previous errors
+        */
+
+        document.getElementById("teethError").textContent = "";
+        document.getElementById("diameterError").textContent = "";
     }
 
 
     /*
-        Linear regression of your measurements.
-
-        Approximate relationship:
-
-        diameter = 1.0069 × teeth + 1.68
+    ============================================================
+    CHECK INITIAL DIAMETER
+    ============================================================
     */
 
-    const baseSlope = 1.0069;
-    const baseIntercept = 1.68;
+    function checkInitialDiameter(errorElement) {
 
+        if (multiplier === null) {
 
-    /*
-        Calculate what the formula predicts
-        for the 18-tooth gear.
-    */
+            document.getElementById(errorElement).textContent =
+                "Must input initial diameter first.";
 
-    const predicted18 =
-        baseSlope * 18 + baseIntercept;
+            return false;
+        }
 
-
-    /*
-        Scale the entire formula so that its
-        18-tooth value becomes the user's
-        specified initial diameter.
-    */
-
-    return initialDiameter / predicted18;
-}
-
-
-/*
-========================================================
-TEETH → DIAMETER
-========================================================
-*/
-
-
-function teethToDiameter() {
-
-    const teeth = parseInt(
-        document.getElementById("teethInput").value
-    );
-
-    const result =
-        document.getElementById("teethResult");
-
-
-    if (
-        isNaN(teeth) ||
-        teeth < 1
-    ) {
-
-        result.textContent =
-            "Enter a whole number of teeth.";
-
-        return;
-    }
-
-
-    const multiplier = getMultiplier();
-
-
-    if (multiplier === null) {
-
-        result.textContent =
-            "Enter a valid 18-tooth initial diameter.";
-
-        return;
+        return true;
     }
 
 
     /*
-        Original Tinkercad prediction
+    ============================================================
+    TEETH → DIAMETER
+    ============================================================
     */
 
-    const baseDiameter =
-        1.0069 * teeth + 1.68;
+    function teethToDiameter() {
 
 
-    /*
-        Apply user's custom initial-diameter
-        multiplier.
-    */
+        /*
+            Safety check
+        */
 
-    const diameter =
-        baseDiameter * multiplier;
-
-
-    result.innerHTML =
-
-        "<strong>" +
-        teeth +
-        " teeth</strong>" +
-
-        "<br>" +
-
-        "<span style='font-size:18px; font-weight:normal'>" +
-        diameter.toFixed(2) +
-        " mm" +
-        "</span>";
-
-}
+        if (!checkInitialDiameter("teethError")) {
+            return;
+        }
 
 
-/*
-========================================================
-DIAMETER → TEETH
-========================================================
-*/
+        document.getElementById("teethError").textContent = "";
 
 
-function diameterToTeeth() {
-
-    const desiredDiameter =
-        parseFloat(
-            document.getElementById("diameterInput").value
-        );
-
-    const result =
-        document.getElementById("diameterResult");
+        const teeth =
+            parseInt(
+                document.getElementById("teethInput").value
+            );
 
 
-    if (
-        isNaN(desiredDiameter) ||
-        desiredDiameter <= 0
-    ) {
-
-        result.textContent =
-            "Enter a valid diameter.";
-
-        return;
-    }
+        const result =
+            document.getElementById("teethResult");
 
 
-    const multiplier = getMultiplier();
+        /*
+            Make sure teeth is a whole number
+        */
+
+        if (
+            isNaN(teeth) ||
+            teeth < 1
+        ) {
+
+            result.textContent =
+                "Enter a whole number of teeth.";
+
+            return;
+        }
 
 
-    if (multiplier === null) {
+        /*
+            Calculate reference diameter
+        */
 
-        result.textContent =
-            "Enter a valid 18-tooth initial diameter.";
-
-        return;
-    }
-
-
-    /*
-        Reverse the formula:
-
-        diameter =
-        (1.0069 × teeth + 1.68)
-        × multiplier
+        const referenceDiameter =
+            slope * teeth + intercept;
 
 
-        Therefore:
+        /*
+            Apply user's initial diameter multiplier
+        */
 
-        teeth =
-        ((diameter / multiplier) - 1.68)
-        / 1.0069
-    */
-
-
-    const calculatedTeeth =
-
-        (
-            (desiredDiameter / multiplier)
-            - 1.68
-        )
-        / 1.0069;
+        const diameter =
+            referenceDiameter * multiplier;
 
 
-    /*
-        ALWAYS ROUND DOWN.
-
-        This guarantees the estimated gear
-        does not exceed the desired diameter.
-    */
-
-    let teeth =
-        Math.floor(calculatedTeeth);
-
-
-    if (teeth < 1) {
-
-        result.textContent =
-            "The requested diameter is too small.";
-
-        return;
+        result.innerHTML =
+            teeth +
+            " teeth = " +
+            diameter.toFixed(2) +
+            " mm" +
+            "<br>" +
+            "<span style='font-size:14px; font-weight:normal'>" +
+            "Estimated using your initial diameter" +
+            "</span>";
     }
 
 
     /*
-        Calculate the diameter of the
-        selected whole-number gear.
+    ============================================================
+    DIAMETER → TEETH
+    ============================================================
     */
 
-    const actualDiameter =
-
-        (
-            1.0069 * teeth
-            + 1.68
-        )
-        * multiplier;
+    function diameterToTeeth() {
 
 
-    /*
-        Safety check.
+        /*
+            Safety check
+        */
 
-        Because of floating point rounding,
-        if the calculated result happens to be
-        microscopically larger than the requested
-        diameter, drop one tooth.
-    */
+        if (!checkInitialDiameter("diameterError")) {
+            return;
+        }
 
-    if (actualDiameter > desiredDiameter) {
 
-        teeth--;
+        document.getElementById("diameterError").textContent = "";
 
+
+        const desiredDiameter =
+            parseFloat(
+                document.getElementById("diameterInput").value
+            );
+
+
+        const result =
+            document.getElementById("diameterResult");
+
+
+        if (
+            isNaN(desiredDiameter) ||
+            desiredDiameter <= 0
+        ) {
+
+            result.textContent =
+                "Enter a valid diameter.";
+
+            return;
+        }
+
+
+        /*
+            First remove the user's scale multiplier.
+
+            This converts the desired diameter back
+            into the reference Tinkercad scale.
+        */
+
+        const referenceTarget =
+            desiredDiameter / multiplier;
+
+
+        /*
+            Reverse the fitted equation:
+
+            diameter = slope × teeth + intercept
+
+            teeth = (diameter - intercept) / slope
+        */
+
+        const calculatedTeeth =
+            (referenceTarget - intercept) / slope;
+
+
+        /*
+            ALWAYS ROUND DOWN.
+
+            This guarantees that the resulting
+            estimated diameter does not exceed
+            the desired diameter.
+        */
+
+        const teeth =
+            Math.floor(calculatedTeeth);
+
+
+        if (teeth < 1) {
+
+            result.textContent =
+                "The requested diameter is too small.";
+
+            return;
+        }
+
+
+        /*
+            Calculate the actual estimated diameter
+            using the selected whole-number gear.
+        */
+
+        const referenceDiameter =
+            slope * teeth + intercept;
+
+
+        const estimatedDiameter =
+            referenceDiameter * multiplier;
+
+
+        result.innerHTML =
+            "<strong>" +
+            teeth +
+            " teeth</strong>" +
+            "<br>" +
+            "<span style='font-size:16px; font-weight:normal'>" +
+            "Estimated diameter: " +
+            estimatedDiameter.toFixed(2) +
+            " mm" +
+            "</span>";
     }
-
-
-    if (teeth < 1) {
-
-        result.textContent =
-            "The requested diameter is too small.";
-
-        return;
-    }
-
-
-    const finalDiameter =
-
-        (
-            1.0069 * teeth
-            + 1.68
-        )
-        * multiplier;
-
-
-    result.innerHTML =
-
-        "<strong>" +
-        teeth +
-        " teeth</strong>" +
-
-        "<br>" +
-
-        "<span style='font-size:16px; font-weight:normal'>" +
-
-        "Estimated diameter: " +
-        finalDiameter.toFixed(2) +
-        " mm" +
-
-        "<br>" +
-
-        "Requested diameter: " +
-        desiredDiameter.toFixed(2) +
-        " mm" +
-
-        "</span>";
-
-}
 
 
 </script>
-
 
 </body>
 </html>
